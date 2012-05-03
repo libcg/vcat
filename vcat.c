@@ -38,7 +38,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
-#define VERSION "0.1"
+#define VERSION "0.2"
 
 static uint32_t colors[] = {
     // Colors 0 to 15: original ANSI colors
@@ -101,9 +101,10 @@ uint8_t rgb2xterm(uint32_t* pixel) {
 void print_usage() {
     printf("vcat (" VERSION ") outputs a video on a 256-color enabled terminal "
            "with UTF-8 locale.\n"
-           "Usage: vcat [--width|-w|--height|-h] videofile\n"
+           "Usage: vcat [--width|-w|--height|-h|--keep|-k] videofile\n"
            "    -w | --width   -- Set width\n"
            "    -h | --height  -- Set height\n"
+           "    -k | --keep    -- Keep aspect ratio\n"
            "    videofile      -- The video to print.\n");
 }
 
@@ -174,18 +175,17 @@ loop_exit:
 }
 
 void printFrame(AVFrame *frame, AVCodecContext *cctx,
+                uint32_t rwidth, uint32_t rheight,
                 uint32_t width, uint32_t height) {
     uint8_t c1, c2;
     uint32_t *p;
 
-    // Cursor to (1;1)
-    printf("\033[1;1H");
-
-    for (uint32_t y = 0; y < 2*height; y += 2) {
+    for (uint32_t y = 0; y < 2*rheight; y += 2) {
+        printf("\033[%d;%dH", 1+(height-rheight+y)/2, 1+(width-rwidth)/2);
         // Draw a horizontal line. Each console line consists of two
         // pixel lines in order to keep the pixels square (most console
         // fonts have two times the height for the width of each character)
-        for (uint32_t x = 0; x < width; x++) {
+        for (uint32_t x = 0; x < rwidth; x++) {
             p = (uint32_t*)(frame->data[0] + (y+1)*frame->linesize[0]) + x;
             c1 = rgb2xterm(p);
 
@@ -195,7 +195,7 @@ void printFrame(AVFrame *frame, AVCodecContext *cctx,
             printf("\x1b[38;5;%dm\x1b[48;5;%dm▄", c1, c2);
         }
         
-        if (y != 2*(height-1)) 
+        if (y < 2*(rheight-1)) 
             printf("\x1b[0m\n");
     }
     
@@ -205,9 +205,12 @@ void printFrame(AVFrame *frame, AVCodecContext *cctx,
 
 int main(int argc, char* argv[]) {
     static int         display_help = 0;
+    static int         keep_ratio = 0;
     int                c;
     uint32_t           width = 80;
     uint32_t           height = 24;
+    uint32_t           rwidth;
+    uint32_t           rheight;
     AVFormatContext   *fctx = NULL;
     int                id;
     AVCodecContext    *cctx;
@@ -219,12 +222,13 @@ int main(int argc, char* argv[]) {
 
     for(;;) {
         static struct option long_options[] = {
-            {"width",  required_argument, 0,             'w'},
-            {"height", required_argument, 0,             'h'},
+            {"keep",   no_argument,       0, 'k'},     
+            {"width",  required_argument, 0, 'w'},
+            {"height", required_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
 
-        c = getopt_long (argc, argv, "w:h:", long_options, NULL);
+        c = getopt_long (argc, argv, "w:h:k", long_options, NULL);
 
         if (c == -1)
             break;
@@ -236,6 +240,10 @@ int main(int argc, char* argv[]) {
 
             case 'h':
                 sscanf(optarg, "%u", &height);
+                break;
+
+            case 'k':
+                keep_ratio = 1;
                 break;
 
             case '?':
@@ -291,6 +299,22 @@ int main(int argc, char* argv[]) {
     if (avcodec_open2(cctx, pCodec, NULL) < 0)
         return -1;
 
+    // Determine the real width and height of video output
+    if (keep_ratio) {
+        if ((float)width / height / 2 > (float)cctx->width / cctx->height) {
+            rwidth  = 2 * height * cctx->width / cctx->height;
+            rheight = height;
+        }
+        else {
+            rwidth  = width;
+            rheight = width * cctx->height / cctx->width / 2;
+        }
+    }
+    else {
+        rwidth  = width;
+        rheight = height;
+    }
+
     // Allocate video frames
     frame    = avcodec_alloc_frame();
     frameRGB = avcodec_alloc_frame();
@@ -298,14 +322,15 @@ int main(int argc, char* argv[]) {
         return -1;
 
     // Determine required buffer size and allocate buffer
-    buffer = malloc(avpicture_get_size(PIX_FMT_BGRA, width, 2*height));
+    buffer = malloc(avpicture_get_size(PIX_FMT_BGRA, rwidth, 2*rheight));
 
     // Assign appropriate parts of buffer to image planes in frameRGB
-    avpicture_fill((AVPicture*)frameRGB, buffer, PIX_FMT_BGRA, width, 2*height);
+    avpicture_fill((AVPicture*)frameRGB, buffer, PIX_FMT_BGRA,
+                   rwidth, 2*rheight);
 
     // Get an image convert context
     sctx = sws_getContext(cctx->width, cctx->height, cctx->pix_fmt,
-                          width, 2*height, PIX_FMT_BGRA,
+                          rwidth, 2*rheight, PIX_FMT_BGRA,
                           SWS_BILINEAR, NULL, NULL, NULL);
 
     // Clear the terminal only once
@@ -316,7 +341,7 @@ int main(int argc, char* argv[]) {
         sws_scale(sctx, (const uint8_t* const*)frame->data, frame->linesize,
                   0, cctx->height, frameRGB->data, frameRGB->linesize);
             
-        printFrame(frameRGB, cctx, width, height);
+        printFrame(frameRGB, cctx, rwidth, rheight, width, height);
     }
     
     // Reset the color
