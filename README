@@ -1,10 +1,23 @@
 vcat - video cat
 Outputs a video on a 256-color enabled terminal with UTF-8 locale.
-Based on icat (image cat by Andreas Textor) and a FFMPEG tutorial.
+Based on icat (image cat by Andreas Textor) and a ffmpeg tutorial.
 
 Build requirements:
 ffmpeg (libavcodec, libavutil, libavformat and libswscale)
 
 To compile:
-make
+'make'
+
+How to use:
+'vcat video.avi' plays video.avi stretched to 80*24 by default.
+'vcat -k -w $((COLUMNS)) -h $((LINES)) video.avi' will keep the aspect ratio and
+rescale each frame to the size of the terminal.
+
+Since vcat makes use of ffmpeg to play the videos, a bunch of codecs (h264,
+MPEG2, Theora, ...) and containers (mp4, mkv, avi, ...) are supported.
+There is no sound support yet, and the framerate is not fixed.
+
+Have fun!
+- geecko
+
 
