@@ -31,6 +31,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <getopt.h>
 #include <malloc.h>
 #include <unistd.h>
@@ -101,26 +102,26 @@ uint8_t rgb2xterm(uint32_t* pixel) {
 void print_usage() {
     printf("vcat (" VERSION ") outputs a video on a 256-color enabled terminal "
            "with UTF-8 locale.\n"
-           "Usage: vcat [--width|-w|--height|-h|--keep|-k] videofile\n"
+           "Usage: vcat [OPTION]... videofile\n"
            "    -w | --width   -- Set width\n"
            "    -h | --height  -- Set height\n"
            "    -k | --keep    -- Keep aspect ratio\n"
            "    videofile      -- The video to print.\n");
 }
 
-int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx,
-                 int id, AVFrame *frame) {
+int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx, int id,
+                 AVFrame *frame) {
     static AVPacket packet;
     static int      bytesRemaining = 0;
     static uint8_t *rawData;
-    static int      first = 1;
+    static bool     first = true;
     int             bytesDecoded;
-    int             finished;
+    int            finished;
 
     // First time we're called, set packet.data to NULL to indicate it
     // doesn't have to be freed
     if (first) {
-        first = 0;
+        first = false;
         packet.data = NULL;
     }
 
@@ -129,8 +130,8 @@ int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx,
         // Work on the current packet until we have decoded all of it
         while (bytesRemaining > 0) {
             // Decode the next chunk of data
-            bytesDecoded = avcodec_decode_video2(cctx, frame,
-                                                 &finished, &packet);
+            bytesDecoded = avcodec_decode_video2(cctx, frame, &finished,
+                                                 &packet);
 
             // Was there an error?
             if (bytesDecoded < 0) {
@@ -204,11 +205,11 @@ void printFrame(AVFrame *frame, AVCodecContext *cctx,
 }
 
 int main(int argc, char* argv[]) {
-    static int         display_help = 0;
-    static int         keep_ratio = 0;
+    static bool        display_help = false;
+    static bool        keep_ratio = false;
     int                c;
-    uint32_t           width = 80;
-    uint32_t           height = 24;
+    int                width = 80;
+    int                height = 24;
     uint32_t           rwidth;
     uint32_t           rheight;
     AVFormatContext   *fctx = NULL;
@@ -235,19 +236,27 @@ int main(int argc, char* argv[]) {
 
         switch (c) {
             case 'w':
-                sscanf(optarg, "%u", &width);
+                width = atoi(optarg);
+                if (width <= 0) {
+                    fprintf(stderr, "Invalid width\n");
+                    return -1;
+                }
                 break;
 
             case 'h':
-                sscanf(optarg, "%u", &height);
+                height = atoi(optarg);
+                if (height <= 0) {
+                    fprintf(stderr, "Invalid height\n");
+                    return -1;
+                }
                 break;
 
             case 'k':
-                keep_ratio = 1;
+                keep_ratio = true;
                 break;
 
             case '?':
-                display_help = 1;
+                display_help = true;
                 break;
 
             default:
@@ -255,9 +264,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (display_help == 1 || optind == argc || optind < argc - 1) {
+    if (display_help == true || optind == argc || optind < argc - 1) {
         print_usage();
-        exit(0);
+        return 0;
     }
 
     // Register all formats and codecs
@@ -315,6 +324,13 @@ int main(int argc, char* argv[]) {
         rheight = height;
     }
 
+    // Get an image convert context
+    sctx = sws_getContext(cctx->width, cctx->height, cctx->pix_fmt,
+                          rwidth, 2*rheight, PIX_FMT_BGRA,
+                          SWS_BILINEAR, NULL, NULL, NULL);
+    if (sctx == NULL)
+        return -1;
+
     // Allocate video frames
     frame    = avcodec_alloc_frame();
     frameRGB = avcodec_alloc_frame();
@@ -327,11 +343,6 @@ int main(int argc, char* argv[]) {
     // Assign appropriate parts of buffer to image planes in frameRGB
     avpicture_fill((AVPicture*)frameRGB, buffer, PIX_FMT_BGRA,
                    rwidth, 2*rheight);
-
-    // Get an image convert context
-    sctx = sws_getContext(cctx->width, cctx->height, cctx->pix_fmt,
-                          rwidth, 2*rheight, PIX_FMT_BGRA,
-                          SWS_BILINEAR, NULL, NULL, NULL);
 
     // Clear the terminal only once
     printf("\033[2J");
@@ -348,7 +359,7 @@ int main(int argc, char* argv[]) {
     printf("\x1b[0m\n");
     
     // Free the convert context
-    av_free(sctx);
+    sws_freeContext(sctx);
     
     // Free the RGB image
     free(buffer);
