@@ -32,6 +32,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <getopt.h>
 #include <malloc.h>
 #include <unistd.h>
@@ -41,6 +42,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define VERSION "0.2"
 
+static bool     interrupt = false;
 static uint32_t colors[] = {
     // Colors 0 to 15: original ANSI colors
     0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5,
@@ -116,7 +118,7 @@ int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx, int id,
     static uint8_t *rawData;
     static bool     first = true;
     int             bytesDecoded;
-    int            finished;
+    int             finished;
 
     // First time we're called, set packet.data to NULL to indicate it
     // doesn't have to be freed
@@ -178,7 +180,8 @@ loop_exit:
 void printFrame(AVFrame *frame, AVCodecContext *cctx,
                 uint32_t rwidth, uint32_t rheight,
                 uint32_t width, uint32_t height) {
-    uint8_t c1, c2;
+    uint8_t   c1;
+    uint8_t   c2;
     uint32_t *p;
 
     for (uint32_t y = 0; y < 2*rheight; y += 2) {
@@ -195,13 +198,12 @@ void printFrame(AVFrame *frame, AVCodecContext *cctx,
 
             printf("\x1b[38;5;%dm\x1b[48;5;%dm▄", c1, c2);
         }
-        
-        if (y < 2*(rheight-1)) 
-            printf("\x1b[0m\n");
     }
-    
-    // Force stdout flush
-    fflush(stdout);
+}
+
+void sigint(int param)
+{
+    interrupt = true;
 }
 
 int main(int argc, char* argv[]) {
@@ -220,6 +222,8 @@ int main(int argc, char* argv[]) {
     AVFrame           *frameRGB;
     uint8_t           *buffer;
     struct SwsContext *sctx;
+
+    signal(SIGINT, sigint);
 
     for(;;) {
         static struct option long_options[] = {
@@ -348,7 +352,7 @@ int main(int argc, char* argv[]) {
     printf("\033[2J");
 
     // Print all the frames
-    while (getNextFrame(fctx, cctx, id, frame)) {
+    while (getNextFrame(fctx, cctx, id, frame) && !interrupt) {
         sws_scale(sctx, (const uint8_t* const*)frame->data, frame->linesize,
                   0, cctx->height, frameRGB->data, frameRGB->linesize);
             
