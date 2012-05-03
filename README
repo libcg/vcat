@@ -1,0 +1,10 @@
+vcat - video cat
+Outputs a video on a 256-color enabled terminal with UTF-8 locale.
+Based on icat (image cat by Andreas Textor) and a FFMPEG tutorial.
+
+Build requirements:
+ffmpeg (libavcodec, libavutil, libavformat and libswscale)
+
+To compile:
+make
+
