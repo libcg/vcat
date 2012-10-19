@@ -168,7 +168,7 @@ int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx, int id,
                 av_free_packet(&packet);
 
             // Read new packet
-            if (av_read_packet(fctx, &packet) < 0)
+            if (av_read_frame(fctx, &packet) < 0)
                 goto loop_exit;
         } while (packet.stream_index != id);
 
