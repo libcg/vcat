@@ -40,7 +40,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
-#define VERSION "0.2"
+#define VERSION "0.3"
 
 static bool     interrupt = false;
 static uint32_t colors[] = {
