@@ -10,7 +10,7 @@ To compile:
 
 How to use:
 'vcat video.avi' plays video.avi stretched to 80*24 by default.
-'vcat -k -w $((COLUMNS)) -h $((LINES)) video.avi' will keep the aspect ratio and
+'vcat -k -w $COLUMNS -h $LINES video.avi' will keep the aspect ratio and
 rescale each frame to the size of the terminal.
 
 Since vcat makes use of ffmpeg to play the videos, a bunch of codecs (h264,
