@@ -210,6 +210,8 @@ void printFrame(AVFrame *frame, AVCodecContext *cctx,
             printf("\x1b[38;5;%dm\x1b[48;5;%dm▄", c1, c2);
         }
     }
+    
+    fflush(stdout);
 }
 
 void sigint(int param)
@@ -233,6 +235,7 @@ int main(int argc, char* argv[]) {
     AVFrame           *frameRGB;
     uint8_t           *buffer;
     struct SwsContext *sctx;
+    void              *stdout_buf;
 
     signal(SIGINT, sigint);
 
@@ -359,8 +362,13 @@ int main(int argc, char* argv[]) {
     avpicture_fill((AVPicture*)frameRGB, buffer, PIX_FMT_BGRA,
                    rwidth, 2*rheight);
 
+    // Set a custom buffer for stdout
+    stdout_buf = malloc(32*width*height);
+    setvbuf(stdout, stdout_buf, _IOFBF, 32*width*height);
+
     // Clear the terminal only once
     printf("\033[2J");
+    fflush(stdout);
 
     // Print all the frames
     while (getNextFrame(fctx, cctx, id, frame) && !interrupt) {
@@ -372,6 +380,9 @@ int main(int argc, char* argv[]) {
     
     // Reset the color
     printf("\x1b[0m\n");
+    
+    // Free the stdout buffer
+    free(stdout_buf);
     
     // Free the convert context
     sws_freeContext(sctx);
