@@ -34,10 +34,10 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 #include <signal.h>
 #include <getopt.h>
-#include <malloc.h>
 #include <unistd.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 
 #define VERSION "0.3"
@@ -165,7 +165,7 @@ int getNextFrame(AVFormatContext *fctx, AVCodecContext *cctx, int id,
         do {
             // Free old packet
             if (packet.data != NULL)
-                av_free_packet(&packet);
+                av_packet_unref(&packet);
 
             // Read new packet
             if (av_read_frame(fctx, &packet) < 0)
@@ -183,7 +183,7 @@ loop_exit:
 
     // Free last packet
     if (packet.data != NULL)
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
 
     return finished;
 }
@@ -344,23 +344,24 @@ int main(int argc, char* argv[]) {
 
     // Get an image convert context
     sctx = sws_getContext(cctx->width, cctx->height, cctx->pix_fmt,
-                          rwidth, 2*rheight, PIX_FMT_BGRA,
+                          rwidth, 2*rheight, AV_PIX_FMT_BGRA,
                           SWS_BILINEAR, NULL, NULL, NULL);
     if (sctx == NULL)
         return -1;
 
     // Allocate video frames
-    frame    = avcodec_alloc_frame();
-    frameRGB = avcodec_alloc_frame();
+    frame    = av_frame_alloc();
+    frameRGB = av_frame_alloc();
     if (frame == NULL || frameRGB == NULL)
         return -1;
 
     // Determine required buffer size and allocate buffer
-    buffer = malloc(avpicture_get_size(PIX_FMT_BGRA, rwidth, 2*rheight));
+    buffer = malloc(av_image_get_buffer_size(AV_PIX_FMT_BGRA,
+                                             rwidth, 2*rheight, 1));
 
     // Assign appropriate parts of buffer to image planes in frameRGB
-    avpicture_fill((AVPicture*)frameRGB, buffer, PIX_FMT_BGRA,
-                   rwidth, 2*rheight);
+    av_image_fill_arrays(frameRGB->data, frameRGB->linesize, buffer,
+                         AV_PIX_FMT_BGRA, rwidth, 2*rheight, 1);
 
     // Set a custom buffer for stdout
     stdout_buf = malloc(32*width*height);
@@ -389,10 +390,10 @@ int main(int argc, char* argv[]) {
     
     // Free the RGB image
     free(buffer);
-    av_free(frameRGB);
+    av_frame_free(&frameRGB);
 
     // Free the YUV frame
-    av_free(frame);
+    av_frame_free(&frame);
 
     // Close the codec
     avcodec_close(cctx);
